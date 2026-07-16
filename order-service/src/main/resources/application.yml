@@ -1,0 +1,23 @@
+#spring.application.name=order
+
+spring:
+  application:
+    name: order-service
+  config:
+    import: configserver:http://localhost:8084
+  profiles:
+    active: dev
+
+#  datasource:
+#    url: jdbc:postgresql://localhost:5432/order
+#    username: devcode
+#    password: devcode
+#  jpa:
+#    database: POSTGRESQL
+#    show-sql: true
+#    hibernate:
+#      ddl-auto: update
+#    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+server:
+  port: 8083

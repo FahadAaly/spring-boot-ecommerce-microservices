@@ -1,0 +1,4 @@
+spring:
+  mongodb:
+    uri: mongodb+srv://fali13367_db_user:KyT5NK15R833EDq8@ecom-user.myypphv.mongodb.net/userdb?appName=ecom-user
+    database: userdb

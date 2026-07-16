@@ -1,0 +1,44 @@
+
+#spring.jpa.show-sql=true
+#spring.jpa.hibernate.ddl-auto=create
+spring:
+  application:
+    name: ecom-application
+#  h2:
+#    console:
+#      enabled: true
+#      path: /h2-console
+#  datasource:
+#    url: jdbc:h2:mem:test;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+#    username: sa
+#    password: ""
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ecomdb
+    username: fahadx
+    password: fahadx
+  jpa:
+    database: POSTGRESQL
+    show-sql: true
+    hibernate:
+      ddl-auto: update
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+management:
+    endpoints:
+      web:
+        exposure:
+          include: "*"
+
+    endpoint:
+      health:
+        show-details: always
+    info:
+      env:
+        enabled: true
+
+
+info:
+  app:
+    name: My New App
+    description: App built by us
+    version: 1.0.0
