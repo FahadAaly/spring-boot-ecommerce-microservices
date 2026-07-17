@@ -10,12 +10,17 @@ spring:
     active: dev
 
 
-#  jpa:
-#    database: POSTGRESQL
-#    show-sql: true
-#    hibernate:
-#      ddl-auto: update
-#    database-platform: org.hibernate.dialect.PostgreSQLDialect
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
 
 server:
   port: 8081
