@@ -1,7 +1,11 @@
 package com.ecommerce.order.services;
 
+import com.ecommerce.order.clients.ProductServiceClient;
+import com.ecommerce.order.clients.UserServiceClient;
 import com.ecommerce.order.dto.CartItemRequest;
 import com.ecommerce.order.dto.CartItemResponse;
+import com.ecommerce.order.dto.ProductResponse;
+import com.ecommerce.order.dto.UserResponse;
 import com.ecommerce.order.models.CartItem;
 import com.ecommerce.order.repository.CartItemRepository;
 import lombok.RequiredArgsConstructor;
@@ -16,23 +20,44 @@ public class CartItemService {
 
     private final CartItemRepository cartItemRepository;
 
+    private final ProductServiceClient productServiceClient;
+
+    private final UserServiceClient userServiceClient;
+
     public void addtoCart(String userIdHeader, CartItemRequest request) {
         if (userIdHeader == null || userIdHeader.isBlank() || request == null || request.getProductId() == null) {
             throw new IllegalArgumentException("Invalid cart add request");
         }
-        Long userId = parseUserId(userIdHeader);
-//        User user = userRepository.findById(userId)
-//                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
-//        Product product = productRepository.findById(request.getProductId())
-//                .orElseThrow(() -> new IllegalArgumentException("Product not found: " + request.getProductId()));
 
-        int qty = request.getQuantity() == null || request.getQuantity() <= 0 ? 1 : request.getQuantity();
+        String userId = userIdHeader.trim();
+
+        // 2. Validate quantity (prevents negative or zero quantity items)
+        if (request.getQuantity() <= 0) {
+            throw new IllegalArgumentException("Quantity must be greater than zero");
+        }
+
+        // 3. Parse user ID with explicit exception handling
+        UserResponse user = userServiceClient
+                .getUserDetails(userId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "User with ID " + userId + " does not exist"
+                ));
+
+        // 1. Fetch product details or throw exception if missing
+        ProductResponse product = productServiceClient
+                .getProductDetails(String.valueOf(request.getProductId()))
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Product with ID " + request.getProductId() + " does not exist"
+                ));
+
+
+        int qty = request.getQuantity();
+        BigDecimal currentPrice = product.getPrice();
 
         CartItem item = cartItemRepository.findByUserIdAndProductId(userId, request.getProductId())
                 .map(existing -> {
                     existing.setQuantity(existing.getQuantity() + qty);
-                    // keep the current price; or update to latest product price
-                    existing.setPrice(BigDecimal.valueOf(1000.000));
+                    existing.setPrice(currentPrice);
                     return existing;
                 })
                 .orElseGet(() -> {
@@ -40,7 +65,7 @@ public class CartItemService {
                     cartItem.setUserId(userId);
                     cartItem.setProductId(request.getProductId());
                     cartItem.setQuantity(qty);
-                    cartItem.setPrice(BigDecimal.valueOf(1000.00));
+                    cartItem.setPrice(currentPrice);
                     return cartItem;
                 });
 
@@ -51,11 +76,14 @@ public class CartItemService {
         if (userIdHeader == null || userIdHeader.isBlank() || productId == null) {
             throw new IllegalArgumentException("Invalid cart remove request");
         }
-        Long userId = parseUserId(userIdHeader);
-//        // Validate user exists to align with add flow semantics
-//        userRepository.findById(userId)
-//                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
-        return cartItemRepository.findByUserIdAndProductId(userId, productId)
+        String userId = userIdHeader.trim();
+        //        // Validate user exists to align with add flow semantics
+        UserResponse user = userServiceClient
+                .getUserDetails(userId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "User with ID " + userId + " does not exist"
+                ));
+        return cartItemRepository.findByUserIdAndProductId(String.valueOf(userId), productId)
                 .map(item -> {
                     cartItemRepository.delete(item);
                     return true;
@@ -67,11 +95,13 @@ public class CartItemService {
         if (userIdHeader == null || userIdHeader.isBlank()) {
             throw new IllegalArgumentException("Invalid cart fetch request");
         }
-        Long userId = parseUserId(userIdHeader);
+        String userId = userIdHeader.trim();
         // ensure user exists similar to add/remove semantics
-//        userRepository.findById(userId)
-//                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
-
+        UserResponse user = userServiceClient
+                .getUserDetails(userId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "User with ID " + userId + " does not exist"
+                ));
         return cartItemRepository.findByUserId(userId);
     }
 
@@ -95,6 +125,6 @@ public class CartItemService {
     }
 
     public void clearCart(String userId) {
-        cartItemRepository.deleteByUserId(Long.valueOf(userId));
+        cartItemRepository.deleteByUserId(userId);
     }
 }
