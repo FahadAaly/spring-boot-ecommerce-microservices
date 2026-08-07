@@ -2,3 +2,9 @@ spring:
   mongodb:
     uri: mongodb+srv://${MONGODB_USER}:${MONGODB_PASSWORD}@ecom-user.myypphv.mongodb.net/userdb?appName=ecom-user
     database: userdb
+
+eureka:
+  serviceUrl:
+    defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true

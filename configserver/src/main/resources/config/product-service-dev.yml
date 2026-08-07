@@ -3,3 +3,9 @@ spring:
     url: jdbc:postgresql://localhost:5432/product
     username: ${DATABASE_USERNAME}
     password: ${DATABASE_PASSWORD}
+
+eureka:
+  serviceUrl:
+    defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
