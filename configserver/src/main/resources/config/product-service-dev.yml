@@ -4,6 +4,11 @@ spring:
     username: ${DATABASE_USERNAME}
     password: ${DATABASE_PASSWORD}
 
+  jpa:
+    hibernate:
+      ddl-auto: update   # 👈 This tells Hibernate to create the 'products' table on startup
+    show-sql: true
+
   rabbitmq:
     host: localhost
     port: 5672
