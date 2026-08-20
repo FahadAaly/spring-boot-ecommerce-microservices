@@ -10,7 +10,7 @@ spring:
     config:
       server:
         native:
-          search-locations: File:/Users/fahadali/Documents/Courses/SpringBoot/ecom-microservices/configserver/src/main/resources/config
+          search-locations: ${CONFIG_PATH}
 
   rabbitmq:
     host: localhost
