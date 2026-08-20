@@ -1,0 +1,78 @@
+server:
+  port: 8080
+
+spring:
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            # ==========================================
+            # 1. Product Service Route
+            # ==========================================
+            - id: product-service
+              uri: lb://PRODUCT-SERVICE
+              predicates:
+                - Path=/products/**,/api/products/**
+              filters:
+                - "RewritePath=/products(?<segment>/?.*),/api/products${segment}"
+
+            # ==========================================
+            # 2. User Service Route
+            # ==========================================
+            - id: user-service
+              uri: lb://USER-SERVICE
+              predicates:
+                - Path=/users/**,/api/users/**
+              filters:
+                - "RewritePath=/users(?<segment>/?.*),/api/users${segment}"
+
+            # ==========================================
+            # 3. Order & Cart Service Route
+            # ==========================================
+            - id: order-service
+              uri: lb://ORDER-SERVICE
+              predicates:
+                - Path=/orders/**,/api/orders/**,/api/cart/**,/cart/**
+              filters:
+                - "RewritePath=/(?<segment>.*),/api/${segment}"
+
+            # ==========================================
+            # 4. Eureka Server Dashboard Routes
+            # ==========================================
+            - id: eureka-server-ui
+              uri: http://localhost:8761
+              predicates:
+                - Path=/eureka/main
+              filters:
+                - SetPath=/
+
+            - id: eureka-server-static
+              uri: http://localhost:8761
+              predicates:
+                - Path=/eureka/css/**,/eureka/js/**,/eureka/fonts/**,/eureka/images/**
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  tracing:
+    sampling:
+      probability: 1.0
+
+#logging:
+#  level:
+#    root: info
+#    org.springframework.cloud.gateway.route.RouteDefinitionLocator: INFO
+#    org:
+#      springframework:
+#        cloud:
+#          gateway: TRACE
