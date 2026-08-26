@@ -1,5 +1,6 @@
 package com.ecommerce.order.models;
 
+import com.rabbitmq.client.AMQP;
 import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
@@ -7,9 +8,13 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import lombok.*;
 
 @Entity
 @Data
+@NoArgsConstructor       // 👈 Required by Hibernate to instantiate the entity
+@AllArgsConstructor
+@Builder // 👈 Enables CartItem.builder()
 public class CartItem {
 
     @Id

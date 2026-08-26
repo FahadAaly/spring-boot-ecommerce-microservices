@@ -3,87 +3,96 @@ package com.ecommerce.order.services;
 import com.ecommerce.order.clients.ProductServiceClient;
 import com.ecommerce.order.clients.UserServiceClient;
 import com.ecommerce.order.dto.CartItemRequest;
-import com.ecommerce.order.dto.CartItemResponse;
 import com.ecommerce.order.dto.ProductResponse;
 import com.ecommerce.order.dto.UserResponse;
 import com.ecommerce.order.models.CartItem;
 import com.ecommerce.order.repository.CartItemRepository;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class CartItemService {
 
     private final CartItemRepository cartItemRepository;
-
     private final ProductServiceClient productServiceClient;
-
     private final UserServiceClient userServiceClient;
 
-    public void addtoCart(String userIdHeader, CartItemRequest request) {
-        if (userIdHeader == null || userIdHeader.isBlank() || request == null || request.getProductId() == null) {
-            throw new IllegalArgumentException("Invalid cart add request");
+    @Transactional
+    @CircuitBreaker(name = "productService", fallbackMethod = "addToCartFallback")
+    public void addToCart(String userIdHeader, CartItemRequest request) {
+        String userId = validateAndGetUserId(userIdHeader);
+
+        if (request == null || request.getProductId() == null) {
+            throw new IllegalArgumentException("Invalid cart add request: product ID is required");
         }
 
-        String userId = userIdHeader.trim();
-
-        // 2. Validate quantity (prevents negative or zero quantity items)
         if (request.getQuantity() <= 0) {
             throw new IllegalArgumentException("Quantity must be greater than zero");
         }
 
-        // 3. Parse user ID with explicit exception handling
-        UserResponse user = userServiceClient
-                .getUserDetails(userId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "User with ID " + userId + " does not exist"
-                ));
+        // 1. Verify User exists
+        validateUserExists(userId);
 
-        // 1. Fetch product details or throw exception if missing
-        ProductResponse product = productServiceClient
-                .getProductDetails(String.valueOf(request.getProductId()))
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Product with ID " + request.getProductId() + " does not exist"
-                ));
-
+        // 2. Verify Product exists and fetch price
+        ProductResponse product = productServiceClient.getProductDetails(String.valueOf(request.getProductId()))
+                .orElseThrow(() -> new IllegalArgumentException("Product with ID " + request.getProductId() + " does not exist"));
 
         int qty = request.getQuantity();
         BigDecimal currentPrice = product.getPrice();
 
+        // 3. Upsert cart item
         CartItem item = cartItemRepository.findByUserIdAndProductId(userId, request.getProductId())
                 .map(existing -> {
                     existing.setQuantity(existing.getQuantity() + qty);
                     existing.setPrice(currentPrice);
                     return existing;
                 })
-                .orElseGet(() -> {
-                    CartItem cartItem = new CartItem();
-                    cartItem.setUserId(userId);
-                    cartItem.setProductId(request.getProductId());
-                    cartItem.setQuantity(qty);
-                    cartItem.setPrice(currentPrice);
-                    return cartItem;
-                });
+                .orElseGet(() -> CartItem.builder()
+                        .userId(userId)
+                        .productId(request.getProductId())
+                        .quantity(qty)
+                        .price(currentPrice)
+                        .build());
 
         cartItemRepository.save(item);
     }
 
-    public boolean removeFromCart(String userIdHeader, Long productId) {
-        if (userIdHeader == null || userIdHeader.isBlank() || productId == null) {
-            throw new IllegalArgumentException("Invalid cart remove request");
+    /**
+     * Fallback for addToCart when downstream services fail or circuit is OPEN.
+     */
+    public void addToCartFallback(String userIdHeader, CartItemRequest request, Throwable throwable) {
+        log.error("Fallback triggered for userId: {}, productId: {}. Reason: {}",
+                userIdHeader,
+                request != null ? request.getProductId() : "N/A",
+                throwable.getMessage());
+
+        // Do not mask client-side bad requests (400)
+        if (throwable instanceof IllegalArgumentException) {
+            throw (IllegalArgumentException) throwable;
         }
-        String userId = userIdHeader.trim();
-        //        // Validate user exists to align with add flow semantics
-        UserResponse user = userServiceClient
-                .getUserDetails(userId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "User with ID " + userId + " does not exist"
-                ));
-        return cartItemRepository.findByUserIdAndProductId(String.valueOf(userId), productId)
+
+        throw new IllegalStateException("Product or User service is currently unavailable. Please try again later.");
+    }
+
+    @Transactional
+    public boolean removeFromCart(String userIdHeader, Long productId) {
+        String userId = validateAndGetUserId(userIdHeader);
+
+        if (productId == null) {
+            throw new IllegalArgumentException("Invalid cart remove request: product ID is required");
+        }
+
+        validateUserExists(userId);
+
+        return cartItemRepository.findByUserIdAndProductId(userId, productId)
                 .map(item -> {
                     cartItemRepository.delete(item);
                     return true;
@@ -91,40 +100,32 @@ public class CartItemService {
                 .orElse(false);
     }
 
+    @Transactional(readOnly = true)
     public List<CartItem> fetchCart(String userIdHeader) {
-        if (userIdHeader == null || userIdHeader.isBlank()) {
-            throw new IllegalArgumentException("Invalid cart fetch request");
-        }
-        String userId = userIdHeader.trim();
-        // ensure user exists similar to add/remove semantics
-        UserResponse user = userServiceClient
-                .getUserDetails(userId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "User with ID " + userId + " does not exist"
-                ));
+        String userId = validateAndGetUserId(userIdHeader);
+        validateUserExists(userId);
         return cartItemRepository.findByUserId(userId);
     }
 
-    private CartItemResponse mapToCartItemResponse(CartItem item) {
-        CartItemResponse resp = new CartItemResponse();
-        resp.setId(String.valueOf(item.getId()));
-        if (item.getProductId() != null) {
-            resp.setProductId(String.valueOf(item.getProductId()));
-        }
-        resp.setPrice(item.getPrice());
-        resp.setQuantity(item.getQuantity());
-        return resp;
-    }
-
-    private Long parseUserId(String header) {
-        try {
-            return Long.parseLong(header.trim());
-        } catch (NumberFormatException ex) {
-            throw new IllegalArgumentException("Invalid X-User-ID header");
-        }
-    }
-
-    public void clearCart(String userId) {
+    @Transactional
+    public void clearCart(String userIdHeader) {
+        String userId = validateAndGetUserId(userIdHeader);
         cartItemRepository.deleteByUserId(userId);
+    }
+
+    // ==========================================
+    // Internal Helper Methods
+    // ==========================================
+
+    private String validateAndGetUserId(String userIdHeader) {
+        if (userIdHeader == null || userIdHeader.isBlank()) {
+            throw new IllegalArgumentException("X-User-ID header cannot be null or empty");
+        }
+        return userIdHeader.trim();
+    }
+
+    private UserResponse validateUserExists(String userId) {
+        return userServiceClient.getUserDetails(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User with ID " + userId + " does not exist"));
     }
 }
