@@ -10,7 +10,8 @@ spring:
     config:
       server:
         native:
-          search-locations: ${CONFIG_PATH}
+          # Falls back to local directory 'config' or classpath if CONFIG_PATH is unset
+          search-locations: ${CONFIG_PATH:file:./config}
 
   rabbitmq:
     host: localhost
