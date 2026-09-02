@@ -1,20 +1,45 @@
+server:
+  port: 8083
+
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/order
-    username: ${DATABASE_USERNAME}
-    password: ${DATABASE_PASSWORD}
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:postgres}
 
   jpa:
     hibernate:
-      ddl-auto: update   # 👈 This tells Hibernate to create the 'products' table on startup
+      ddl-auto: update
     show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
 
   rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:naalslwv}
 
+# Eureka Client Configuration (Fixed nesting)
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+
+# Custom RabbitMQ properties for Order Events
+rabbitmq:
+  queue:
+    name: order.queue
+  exchange:
+    name: order.exchange
+  routing:
+    key: order.tracking
+
+# Actuator & Observability
 management:
   endpoints:
     web:
@@ -27,10 +52,13 @@ management:
   health:
     circuitbreakers:
       enabled: true
+    ratelimiters:
+      enabled: true
   tracing:
     sampling:
       probability: 1.0
 
+# Logging Configuration
 logging:
   file:
     name: logs/${spring.application.name}.log
@@ -39,22 +67,29 @@ logging:
       max-file-size: 5MB
       max-history: 7
 
-eureka:
-  serviceUrl:
-    defaultZone: http://localhost:8761/eureka/
-    register-with-eureka: true
-    fetch-registry: true
-
-# Circuit Breaker
+# Resilience4j Instances (Standard Kebab-Case)
 resilience4j:
   circuitbreaker:
     instances:
       productService:
-        registerHealthIndicator: true
-        slidingWindowSize: 10
-        minimumNumberOfCalls: 5
-        permittedNumberOfCallsInHalfOpenState: 3
-        waitDurationInOpenState: 10s
-        failureRateThreshold: 50
-        automaticTransitionFromOpenToHalfOpenEnabled: true
-        slidingWindowType: count_based
+        register-health-indicator: true
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        wait-duration-in-open-state: 10s
+        failure-rate-threshold: 50
+        automatic-transition-from-open-to-half-open-enabled: true
+
+  retry:
+    instances:
+      retryBreaker:
+        max-attempts: 5
+        wait-duration: 5s
+
+  ratelimiter:
+    instances:
+      rateBreaker:
+        timeout-duration: 0s
+        limit-refresh-period: 4s
+        limit-for-period: 4

@@ -1,5 +1,6 @@
 package com.ecommerce.order.services;
 
+import com.ecommerce.order.dto.OrderCreatedEvent;
 import com.ecommerce.order.dto.OrderItemDto;
 import com.ecommerce.order.dto.OrderResponse;
 import com.ecommerce.order.repository.OrderRepository;
@@ -9,6 +10,7 @@ import com.ecommerce.order.models.OrderItem;
 import com.ecommerce.order.models.OrderStatus;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -20,6 +22,8 @@ import java.util.Optional;
 public class OrderService {
     private final CartItemService cartItemService;
     private final OrderRepository orderRepository;
+
+    private final RabbitTemplate rabbitTemplate;
 
     @Transactional
     public Optional<OrderResponse> createOrder(String userId) {
@@ -57,8 +61,30 @@ public class OrderService {
 
         Order savedOrder = orderRepository.save(order);
 
+        List<OrderItemDto> itemDtos = savedOrder.getItems().stream()
+                .map(item -> new OrderItemDto(
+                        item.getId(),
+                        item.getProductId(),
+                        item.getQuantity(),
+                        item.getPrice(),
+                        item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity()))
+                ))
+                .toList();
+
         // Clear the cart items
         cartItemService.clearCart(userId);
+
+        // Build the complete event payload
+        OrderCreatedEvent event = OrderCreatedEvent.builder()
+                .orderId(savedOrder.getId())
+                .userId(savedOrder.getUserId())
+                .totalAmount(savedOrder.getTotalAmount())
+                .status(savedOrder.getStatus())
+                .items(itemDtos)
+                .createdAt(savedOrder.getCreatedAt())
+                .build();
+
+        rabbitTemplate.convertAndSend("order.exchange", "order.tracking", event);
 
         return Optional.of(mapToOrderResponse(savedOrder));
     }
